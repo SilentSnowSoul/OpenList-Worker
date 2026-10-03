@@ -146,3 +146,17 @@ test("Iwara write operations send physical IDs and upload multipart content", as
   assert.equal((upload as FormData).get("access_token"), "token")
   assert.equal((upload as FormData).get("upload_file") instanceof Blob, true)
 })
+
+test("Iwara rejects upload when the success envelope carries a per-file error", async () => {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.endsWith("/authorize")) return json({ data: { access_token: "token", account_id: "account" } })
+    if (url.endsWith("/file/upload")) {
+      return json({ response: "success", data: [{ name: "big.mp4", size: 100, error: "max upload size exceeded" }] })
+    }
+    return json({ data: { folders: [], files: [] } })
+  }) as typeof fetch
+
+  const driver = new DriverIwara({ api_key_1: "one", api_key_2: "two" })
+  await assert.rejects(() => driver.put("/big.mp4", "/big.mp4", Buffer.from("payload")), /max upload size exceeded/)
+})

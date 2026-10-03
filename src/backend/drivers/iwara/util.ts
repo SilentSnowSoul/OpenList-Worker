@@ -203,7 +203,12 @@ export class ClientIwara {
     form.append("folder_id", folderId || "")
     form.append("upload_file", new Blob([new Uint8Array(content)], { type: "application/octet-stream" }), filename)
     try {
-      await this.post("file/upload", form)
+      // per official API, upload succeeds at envelope level but data[] items carry a per-file error field
+      const result = await this.post<unknown[]>("file/upload", form)
+      const failed = Array.isArray(result.data)
+        ? result.data.find((item) => isObject(item) && typeof item.error === "string" && item.error)
+        : undefined
+      if (failed) throw new IwaraRequestError(`[IwaraZip] upload failed for '${failed.name}': ${failed.error}`, 200)
       this.tokenUsed = Date.now()
     } catch (error) {
       if (!retried && error instanceof IwaraRequestError && tokenInvalid(error.status, error.message)) {
