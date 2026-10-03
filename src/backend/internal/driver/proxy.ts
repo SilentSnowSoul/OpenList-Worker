@@ -119,6 +119,8 @@ const DRIVER_FORCE_PROXY = new Set<string>([
   "strm",
   "meganz",
   "protondrive",
+  "enteshare",
+  "ente",
   "chunk",
   "googledrive",
   "googlephoto",
@@ -127,6 +129,9 @@ const DRIVER_FORCE_PROXY = new Set<string>([
   "chaoxing",
   "local",
 ])
+
+/** createReadStream 驱动中不支持 Range 的(收到 Range 回 200 全量) */
+const DRIVER_NO_STREAM_RANGE = new Set<string>(["enteshare", "ente"])
 
 /** 默认代理（Go: Config.DefaultProxy() = PreferProxy） */
 const DRIVER_PREFER_PROXY = new Set<string>([
@@ -207,6 +212,11 @@ export function extensionOf(filePath: string | undefined | null): string {
  */
 export function driverMustProxy(driver: string): boolean {
   return DRIVER_FORCE_PROXY.has(normalizeDriverName(driver))
+}
+
+/** 该驱动的 createReadStream 是否不支持 Range(secretstream 顺序解密) */
+export function streamDriverNoRange(driver: string): boolean {
+  return DRIVER_NO_STREAM_RANGE.has(normalizeDriverName(driver))
 }
 
 /**

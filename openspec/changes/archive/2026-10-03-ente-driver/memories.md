@@ -1,0 +1,12 @@
+CONTEXT.md
+docs/adr/0001-ente-stream-decrypt-forced-proxy.md
+docs/adr/0002-ente-login-externalized-to-apipages.md
+.scratch/ente-driver/research/ente.md
+src/backend/internal/driver/base.ts
+src/backend/internal/driver/proxy.ts
+src/backend/internal/op/storage.ts
+src/backend/server/admin.ts
+src/backend/drivers/mega/
+src/backend/drivers/proton_drive/
+src/backend/drivers/123_share/
+package.json

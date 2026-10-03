@@ -18,6 +18,7 @@ import {
   getDisableProxySign,
   canUseProxyEndpoint,
   normalizeExtList,
+  streamDriverNoRange,
 } from "../internal/driver/proxy"
 import { getProxyRange } from "../internal/driver/storageopts"
 import {
@@ -611,9 +612,22 @@ rawRouter.get("/*", async (c) => {
               )
             }
             c.header("Access-Control-Allow-Origin", "*")
+            // thumb=1 且驱动支持时走缩略图流,大小未知不设 Content-Length
+            if (
+              c.req.query("thumb") === "1" &&
+              typeof (driver as any).createThumbStream === "function"
+            ) {
+              const thumbStream = await (driver as any).createThumbStream(
+                resolved.physical,
+              )
+              c.header("Content-Type", "image/jpeg")
+              return c.body(thumbStream as any)
+            }
             const size = fileItem.size || 0
             const rangeHeader = c.req.header("Range")
-            if (rangeHeader && size > 0) {
+            // ente 等 createReadStream 驱动不支持随机访问,Range 一律回 200 全量
+            const noRange = streamDriverNoRange(normDriver)
+            if (rangeHeader && size > 0 && !noRange) {
               const { start, end, chunksize } = parseRangeHeader(
                 rangeHeader,
                 size,
@@ -629,7 +643,7 @@ rawRouter.get("/*", async (c) => {
               return c.body(stream as any, 206)
             } else {
               if (size > 0) c.header("Content-Length", size.toString())
-              c.header("Accept-Ranges", "bytes")
+              if (!noRange) c.header("Accept-Ranges", "bytes")
               c.header("Content-Type", "application/octet-stream")
               const stream = await (driver as any).createReadStream(
                 resolved.physical,

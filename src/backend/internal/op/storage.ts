@@ -20,6 +20,7 @@ import { DriverKodbox } from "../../drivers/kodbox/driver"
 import { DriverIpfs } from "../../drivers/ipfs_api/driver"
 import { DriverLenovoNasShare } from "../../drivers/lenovonas_share/driver"
 import { DriverMisskey } from "../../drivers/misskey/driver"
+import { DriverIwara } from "../../drivers/iwara/driver"
 import { DriverDoubao } from "../../drivers/doubao/driver"
 import { DriverQuarkOpen } from "../../drivers/quark_open/driver"
 import { DriverQuarkUcTv } from "../../drivers/quark_uc_tv/driver"
@@ -85,6 +86,8 @@ import { CFImgBedDriver } from "../../drivers/cloudflare_imgbed/driver"
 import { GuangYaPanDriver } from "../../drivers/guangyapan/driver"
 import { AutoIndexDriver } from "../../drivers/autoindex/driver"
 import { ProtonDriveDriver } from "../../drivers/proton_drive/driver"
+import { DriverEnteShare } from "../../drivers/ente_share/driver"
+import { DriverEnte } from "../../drivers/ente/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -362,6 +365,9 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "misskey") {
     driver = new DriverMisskey(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "iwara" || normDriver === "iwarazip") {
+    driver = new DriverIwara(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "doubao" ||
@@ -1129,6 +1135,14 @@ async function createDriver(
     const addition = parseAddition(storageConfig)
     driver = new ProtonDriveDriver(addition)
     await driver.init?.()
+  } else if (normDriver === "enteshare" || normDriver === "ente_share") {
+    const addition = parseAddition(storageConfig)
+    driver = new DriverEnteShare(addition)
+    await driver.init?.()
+  } else if (normDriver === "ente") {
+    const addition = parseAddition(storageConfig)
+    driver = new DriverEnte(addition)
+    await driver.init?.()
   } else if (normDriver === "alidoc" || normDriver === "dingtalkdoc") {
     const addition = parseAddition(storageConfig)
     driver = new AliDocDriver(addition)
@@ -1255,6 +1269,7 @@ export async function scheduleStoragePersistence(
 async function persistStorageCookie(
   storageConfig: any,
   cookie: string,
+  key?: string,
 ): Promise<void> {
   const storageId = String(storageConfig?.id || "")
   if (!storageId) return
@@ -1273,7 +1288,9 @@ async function persistStorageCookie(
         typeof st.addition === "string"
           ? JSON.parse(st.addition || "{}")
           : st.addition || {}
-      if (
+      if (key) {
+        stAddition[key] = cookie
+      } else if (
         stAddition.cookies !== undefined ||
         isWeiyunDriver(storageConfig?.driver)
       ) {
@@ -1314,20 +1331,37 @@ export async function flushPendingDriverState(
   driver: StorageDriver,
   requestContext?: StorageRequestContext,
 ): Promise<void> {
-  if (!isCloud189Driver(driverName) && !isWeiyunDriver(driverName)) return
+  const normDriver = (driverName || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+  const isEnte = normDriver === "enteshare" || normDriver === "ente"
+  if (!isCloud189Driver(driverName) && !isWeiyunDriver(driverName) && !isEnte)
+    return
 
-  const consumePendingCookie = (
-    driver as StorageDriver & {
-      consumePendingCookie?: () => string | null
-    }
-  ).consumePendingCookie
-  const cookie = consumePendingCookie?.call(driver)
-  if (!cookie) return
+  const pending = driver as StorageDriver & {
+    consumePendingCookie?: () => string | null
+    consumePendingDeviceToken?: () => string | null
+  }
+  const cookie = pending.consumePendingCookie?.call(driver)
+  if (cookie) {
+    const persistence = persistStorageCookie(storageConfig, cookie).catch(
+      (e) => {
+        console.warn(`[${driverName}] failed to persist cookie:`, e)
+      },
+    )
+    await scheduleStoragePersistence(requestContext?.waitUntil, persistence)
+  }
 
-  const persistence = persistStorageCookie(storageConfig, cookie).catch((e) => {
-    console.warn(`[${driverName}] failed to persist cookie:`, e)
-  })
-  await scheduleStoragePersistence(requestContext?.waitUntil, persistence)
+  // ente linkDeviceToken 落 addition.device_token,复用公开分享的设备位
+  const deviceToken = pending.consumePendingDeviceToken?.call(driver)
+  if (deviceToken) {
+    const persistence = persistStorageCookie(
+      storageConfig,
+      deviceToken,
+      "device_token",
+    ).catch((e) => {
+      console.warn(`[${driverName}] failed to persist device token:`, e)
+    })
+    await scheduleStoragePersistence(requestContext?.waitUntil, persistence)
+  }
 }
 
 export async function listItems(
